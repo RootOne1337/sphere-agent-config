@@ -1,0 +1,30 @@
+name: Validate configuration repository
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main, codex/pilot-bootstrap-20260911]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: config-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Python regression and repository checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile generator and tests
+        run: python -m compileall -q scripts tests
+      - name: Run regression tests
+        run: python -m unittest discover -s tests -v

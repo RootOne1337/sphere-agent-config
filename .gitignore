@@ -1,5 +1,11 @@
-# Сгенерированные конфиги — не коммитим (содержат enrollment keys)
+# Generated enrollment configs and local secrets
 output/
+.env
+.env.*
+*.secret.json
+*.credential.json
+__pycache__/
+*.py[cod]
 
 # IDE
 .idea/

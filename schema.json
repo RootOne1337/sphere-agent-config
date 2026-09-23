@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://sphere-platform.dev/agent-config/schema.json",
   "title": "Sphere Agent Config",
-  "description": "Схема конфигурации для автоматического provisioning Sphere Platform агентов. Версионируется — агент проверяет config_version для обратной совместимости.",
+  "description": "Legacy schema for manually provisioned Sphere Platform agent configuration. This is separate from the signed pilot discovery envelope.",
   "type": "object",
   "required": ["config_version", "server_url", "enrollment_api_key"],
   "properties": {
@@ -15,7 +15,7 @@
       "type": "string",
       "format": "uri",
       "pattern": "^https?://",
-      "description": "URL бэкенда Sphere Platform. Для LDPlayer эмулятора: http://10.0.2.2:8000 (host loopback)."
+      "description": "Absolute backend URL. Production and staging must use HTTPS; choose an endpoint verified for the target network."
     },
     "ws_path": {
       "type": "string",
@@ -25,7 +25,7 @@
     "enrollment_api_key": {
       "type": "string",
       "pattern": "^sphr_",
-      "description": "API-ключ для enrollment. Должен начинаться с 'sphr_'. Право: device:register."
+      "description": "Legacy enrollment credential. Supply out of band; never commit it in this repository. Expected scope: device:register."
     },
     "device_id": {
       "type": ["string", "null"],
@@ -55,6 +55,11 @@
       "enum": ["production", "staging", "development"],
       "default": "production",
       "description": "Целевое окружение. Определяет поведение агента (логирование, HTTP/HTTPS)."
+    },
+    "min_agent_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "Optional minimum compatible agent version for legacy configuration consumers."
     },
     "config_poll_interval_seconds": {
       "type": "integer",
