@@ -37,6 +37,15 @@ that tunnel, so its document can advertise a changed backend URL. The second
 source is the pilot gateway itself; a second independent permanent external host
 and a second working ingress remain deployment work. This is not fleet readiness.
 
+The enrollment API key is injected from the private installation configuration when
+building the APK; it is not stored in this repository or the signed discovery
+document. The platform build now rejects a configured bootstrap when the key is
+missing, preventing a package that starts but cannot register. An old APK whose
+embedded key has been revoked still needs a valid existing device token for server
+OTA recovery; if both are invalid, plan a one-time local recovery install. After an
+update, use the platform's live agent version and terminal OTA receipt to verify the
+result. This guide and its CI do not publish APKs or change the backend OTA catalog.
+
 ## Runtime route check — 25 September 2026
 
 The currently published signed discovery document is version 24. On the pilot host,

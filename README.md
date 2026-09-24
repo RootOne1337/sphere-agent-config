@@ -28,6 +28,30 @@ but it does not make GitHub available during an outage or regional block. The pi
 documentation records the current mirror and recovery limits; do not describe this
 single-source setup as independent-ingress HA.
 
+### APK enrollment and release boundary
+
+The signed discovery document carries routes and trust metadata. It does **not**
+carry the enrollment credential and this public repository must never be used to
+distribute one. A configured Android bootstrap build receives
+`SPHERE_ENROLLMENT_KEY` from a protected local or CI secret store; the Sphere
+Platform Gradle configuration now fails closed when that input is missing. Legacy
+deployment scripts also require an explicit key instead of silently substituting a
+development placeholder.
+
+The enrollment key is compiled into the APK and can be extracted from a distributed
+package. Issue a narrowly scoped registration key, rotate it at the backend, and do
+not reuse an administrator credential. Never print it in build output, check it into
+this repository, add it to the signed manifest, or put it in a GitHub issue. The
+platform OTA catalog—not this repository—publishes APK artifacts and release
+metadata. A GitHub Actions green check or a new signed route does not prove that an
+installed device enrolled, updated, or delivered a video frame; verify the device's
+reported version and command receipt in the pilot before widening rollout.
+
+An APK with an invalid enrollment credential cannot use that credential to register
+again. If its existing device token is also expired, OTA may need a separately
+authorized recovery grant or a one-time local installation. Plan credential rotation
+so a recovery path remains available before retiring the prior key.
+
 **Pilot verification (25 September 2026):** the signed discovery v24 fetched from
 the stable branch and the pilot gateway's `/bootstrap/agent.signed.json` endpoint
 returned byte-identical documents (HTTP 200). This verifies both configured fetch
