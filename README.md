@@ -28,6 +28,15 @@ but it does not make GitHub available during an outage or regional block. The pi
 documentation records the current mirror and recovery limits; do not describe this
 single-source setup as independent-ingress HA.
 
+**Pilot verification (25 September 2026):** the signed discovery v24 fetched from
+the stable branch and the pilot gateway's `/bootstrap/agent.signed.json` endpoint
+returned byte-identical documents (HTTP 200). This verifies both configured fetch
+paths at that time; it does not prove a browser video stream or long-term tunnel
+availability. The current `main` branch's legacy development document still routes
+through a Serveo URL that returned HTTP 502. New pilot builds must use the signed
+discovery URL and pinned public key from the pilot directory, not fall back to that
+legacy document. See the pilot guide for the measured scope and recovery limits.
+
 ## Legacy manual configuration
 
 `schema.json`, `environments/`, `templates/`, and

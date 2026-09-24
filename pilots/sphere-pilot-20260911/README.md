@@ -36,3 +36,20 @@ The current backend uses one temporary outbound tunnel. This source lives outsid
 that tunnel, so its document can advertise a changed backend URL. The second
 source is the pilot gateway itself; a second independent permanent external host
 and a second working ingress remain deployment work. This is not fleet readiness.
+
+## Runtime route check — 25 September 2026
+
+The currently published signed discovery document is version 24. On the pilot host,
+the stable GitHub Raw URL and `https://<verified-pilot-route>/bootstrap/agent.signed.json`
+both returned HTTP 200 and the same SHA-256 for the 872-byte envelope. The route's
+`/api/v1/health/readyz` returned HTTP 200. This is a point-in-time bootstrap and
+readiness check; it does not establish that Android video frames reach a browser.
+
+The same check found configuration drift outside this repository: the host's local
+pilot environment pointed at a name that did not resolve, and the legacy development
+document on the repository's `main` branch advertised a Serveo endpoint returning
+HTTP 502. The signed pilot envelope and its gateway copy were healthy. New pilot APKs
+must embed the stable signed-discovery source, installation ID, and pinned public key;
+they must not silently use the legacy environment document as a fallback. Keep the
+old route until an APK has accepted and used the verified signed route, then test
+reconnect and frame delivery separately.
