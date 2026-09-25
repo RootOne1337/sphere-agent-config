@@ -47,6 +47,13 @@ metadata. A GitHub Actions green check or a new signed route does not prove that
 installed device enrolled, updated, or delivered a video frame; verify the device's
 reported version and command receipt in the pilot before widening rollout.
 
+For the end-to-end release contract, canary gates, artifact retention, reconnect
+recovery and current fleet readiness, use the [Sphere Platform OTA runbook](https://github.com/RootOne1337/sphere-platform/blob/main/docs/architecture/ANDROID-OTA-RELIABILITY.md)
+and [readiness report](https://github.com/RootOne1337/sphere-platform/blob/main/docs/operations/READINESS.md).
+Changes to this configuration repository publish only signed discovery metadata;
+APK publication, staged rollout and installed-version verification remain platform
+operations.
+
 An APK with an invalid enrollment credential cannot use that credential to register
 again. If its existing device token is also expired, OTA may need a separately
 authorized recovery grant or a one-time local installation. Plan credential rotation
