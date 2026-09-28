@@ -19,18 +19,17 @@ generate_device_config.py — генератор sphere-agent-config.json для
     --location msk-office-1 \
     --output-dir ./output
 
-  # Для физического устройства
-  python generate_device_config.py \
-    --env production \
-    --location fra-dc-2 \
-    --template physical-device
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
 import sys
+import tempfile
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 # Корень agent-config относительно скрипта
@@ -51,22 +50,87 @@ def load_schema() -> dict:
     """Загрузить JSON Schema для валидации."""
     schema_file = CONFIG_ROOT / "schema.json"
     if not schema_file.exists():
-        return {}
+        raise FileNotFoundError(f"JSON Schema не найдена: {schema_file}")
     with open(schema_file, encoding="utf-8") as f:
         return json.load(f)
 
 
 def validate_config(config: dict, schema: dict) -> list[str]:
-    """Базовая валидация конфига по обязательным полям схемы (без jsonschema зависимости)."""
+    """Validate fields used by the legacy generator without exposing secrets."""
     errors: list[str] = []
+    if not isinstance(config, dict):
+        return ["Конфигурация должна быть JSON-объектом"]
+
     required = schema.get("required", [])
     for field in required:
         if field not in config or config[field] is None:
             errors.append(f"Обязательное поле '{field}' отсутствует или null")
-    # Проверка формата enrollment_api_key
+
+    version = config.get("config_version")
+    if not isinstance(version, int) or isinstance(version, bool) or version < 1:
+        errors.append("config_version должен быть положительным целым числом")
+
+    server_url = config.get("server_url")
+    if not isinstance(server_url, str) or not server_url.strip():
+        errors.append("server_url отсутствует; задайте SPHERE_SERVER_URL с проверенным адресом")
+    else:
+        try:
+            parsed_url = urlsplit(server_url)
+            valid_host = bool(parsed_url.hostname)
+        except ValueError:
+            parsed_url = None
+            valid_host = False
+        if parsed_url is None or parsed_url.scheme not in {"http", "https"} or not valid_host:
+            errors.append("server_url должен быть абсолютным HTTP(S) URL")
+        elif parsed_url.username or parsed_url.password or parsed_url.fragment:
+            errors.append("server_url не должен содержать учётные данные или fragment")
+        elif config.get("environment") in {"production", "staging"} and parsed_url.scheme != "https":
+            errors.append("Для production и staging требуется HTTPS")
+
+    environment = config.get("environment")
+    if environment not in {"production", "staging", "development"}:
+        errors.append("environment должен быть production, staging или development")
+
+    # Never include credential material in a validation message.
     key = config.get("enrollment_api_key", "")
-    if key and not key.startswith("sphr_"):
-        errors.append(f"enrollment_api_key должен начинаться с 'sphr_', получено: {key[:10]}...")
+    if not isinstance(key, str) or not key.startswith("sphr_") or len(key) <= len("sphr_"):
+        errors.append("enrollment_api_key отсутствует или имеет неверный формат (ожидается префикс sphr_)")
+
+    ws_path = config.get("ws_path", "/ws/android")
+    if not isinstance(ws_path, str) or not ws_path.startswith("/") or ws_path.startswith("//"):
+        errors.append("ws_path должен быть абсолютным путём внутри API")
+
+    instance_index = config.get("instance_index")
+    if instance_index is not None and (
+        not isinstance(instance_index, int) or isinstance(instance_index, bool) or instance_index < 0
+    ):
+        errors.append("instance_index должен быть неотрицательным целым числом или null")
+
+    workstation_id = config.get("workstation_id")
+    if workstation_id is not None and (
+        not isinstance(workstation_id, str)
+        or not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", workstation_id)
+    ):
+        errors.append("workstation_id должен содержать 1–100 латинских букв, цифр, дефисов или подчёркиваний")
+
+    location = config.get("location")
+    if location is not None and (
+        not isinstance(location, str)
+        or not re.fullmatch(r"[A-Za-z0-9_-]{1,50}", location)
+    ):
+        errors.append("location должен содержать 1–50 латинских букв, цифр, дефисов или подчёркиваний")
+
+    poll_interval = config.get("config_poll_interval_seconds", 86400)
+    if not isinstance(poll_interval, int) or isinstance(poll_interval, bool) or poll_interval < 300:
+        errors.append("config_poll_interval_seconds должен быть целым числом не меньше 300")
+
+    features = config.get("features", {})
+    if not isinstance(features, dict) or any(
+        name not in {"telemetry_enabled", "streaming_enabled", "ota_enabled", "auto_register"}
+        or not isinstance(value, bool)
+        for name, value in features.items()
+    ):
+        errors.append("features должен содержать только известные булевы флаги")
     return errors
 
 
@@ -134,8 +198,24 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    if args.count < 1 or args.count > 10000:
+        parser.error("--count должен быть в диапазоне 1..10000")
+    if args.count > 1 and not args.workstation_id:
+        parser.error("для batch-генерации требуется --workstation-id, чтобы вычислить уникальные индексы")
+    if args.output_file and (
+        Path(args.output_file).name != args.output_file
+        or "/" in args.output_file
+        or "\\" in args.output_file
+    ):
+        parser.error("--output-file должен быть именем файла без пути")
+
     # Загружаем окружение и схему
     env_config = load_environment(args.env)
+    server_url = os.environ.get("SPHERE_SERVER_URL", "").strip()
+    enrollment_key = os.environ.get("SPHERE_ENROLLMENT_API_KEY", "").strip()
+    if server_url:
+        env_config["server_url"] = server_url
+    env_config["enrollment_api_key"] = enrollment_key
     schema = load_schema()
 
     output_dir = Path(args.output_dir)
@@ -143,7 +223,12 @@ def main() -> None:
 
     generated = 0
     for i in range(args.count):
-        idx = args.start_index + i if args.workstation_id else args.instance_index
+        if args.workstation_id:
+            idx = args.start_index + i if args.count > 1 else (
+                args.instance_index if args.instance_index is not None else args.start_index
+            )
+        else:
+            idx = args.instance_index
         name = args.ldplayer_name
         if args.count > 1:
             name = name or f"Farm-{idx:03d}"
@@ -171,16 +256,32 @@ def main() -> None:
             filename = f"sphere-agent-config-{idx:03d}.json"
 
         filepath = output_dir / filename
-        with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(config, f, indent=2, ensure_ascii=False)
+        temporary_path: Path | None = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=filepath.parent,
+                prefix=f".{filepath.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as f:
+                temporary_path = Path(f.name)
+                json.dump(config, f, indent=2, ensure_ascii=False)
+                f.write("\n")
+            os.replace(temporary_path, filepath)
+        finally:
+            if temporary_path is not None and temporary_path.exists():
+                temporary_path.unlink()
         generated += 1
 
     print(f"Сгенерировано конфигов: {generated}")
     print(f"Директория: {output_dir.resolve()}")
     if args.count == 1:
-        print(f"\nДеплой: adb push {output_dir / 'sphere-agent-config.json'} /sdcard/sphere-agent-config.json")
+        filename = args.output_file or "sphere-agent-config.json"
+        print(f"\nФайл содержит enrollment credential; ограничьте доступ: {output_dir / filename}")
     else:
-        print(f"\nBatch деплой через PC-Agent: скрипты читают конфиги из {output_dir}/")
+        print(f"\nФайлы содержат enrollment credentials; ограничьте доступ к {output_dir.resolve()}")
 
 
 if __name__ == "__main__":
